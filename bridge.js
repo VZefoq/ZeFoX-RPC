@@ -102,7 +102,9 @@ function sanitizeVersion(version) {
 function setZeFoXPresence(activity = {}) {
   lastActivity = activity || {};
 
-  const extensionVersion = sanitizeVersion(lastActivity.extensionVersion);
+  const extensionVersion = sanitizeVersion(
+    lastActivity.extensionVersion || lastActivity.version || lastActivity.extension?.version
+  );
   if (extensionVersion) {
     lastExtensionVersion = extensionVersion;
   }
@@ -130,7 +132,6 @@ function setZeFoXPresence(activity = {}) {
 
   const presence = {
     details: "Enhance ur roblox experience",
-    state: lastExtensionVersion ? `v${lastExtensionVersion}` : "ZeFoX",
     startTimestamp: lastStartedAt,
     largeImageKey: "zefox_logo",
     largeImageText: "ZeFoX",
@@ -139,6 +140,10 @@ function setZeFoXPresence(activity = {}) {
     buttons,
     instance: false,
   };
+
+  if (lastExtensionVersion) {
+    presence.state = `v${lastExtensionVersion}`;
+  }
 
   rpc.setActivity(presence);
   bridgeEvents.emit("log", "Presence updated.");
