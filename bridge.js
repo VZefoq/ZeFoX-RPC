@@ -19,6 +19,7 @@ let accountDisplayEnabled = false;
 let lastStartedAt = Date.now();
 let lastActivity = {};
 let lastAccount = null;
+let lastExtensionVersion = "";
 
 function getStatus() {
   return {
@@ -93,8 +94,18 @@ function getAccountLabel(account) {
   return account.displayName || "Roblox account";
 }
 
+function sanitizeVersion(version) {
+  const value = String(version || "").trim();
+  return /^\d+(?:\.\d+){0,3}(?:[-+][a-z0-9.-]+)?$/i.test(value) ? value : "";
+}
+
 function setZeFoXPresence(activity = {}) {
   lastActivity = activity || {};
+
+  const extensionVersion = sanitizeVersion(lastActivity.extensionVersion);
+  if (extensionVersion) {
+    lastExtensionVersion = extensionVersion;
+  }
 
   const account = sanitizeAccount(lastActivity.account);
   if (account) {
@@ -119,7 +130,7 @@ function setZeFoXPresence(activity = {}) {
 
   const presence = {
     details: "Enhance ur roblox experience",
-    state: "v0.8.9",
+    state: lastExtensionVersion ? `v${lastExtensionVersion}` : "ZeFoX",
     startTimestamp: lastStartedAt,
     largeImageKey: "zefox_logo",
     largeImageText: "ZeFoX",
