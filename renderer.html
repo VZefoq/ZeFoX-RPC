@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ZeFoX Presence Bridge</title>
+  <link rel="stylesheet" href="renderer.css">
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <img src="assets/app-icon-64.png" alt="ZeFoX" class="logo">
+      <div>
+        <h1>ZeFoX</h1>
+        <p>Better Roblox Experience</p>
+      </div>
+      <strong id="appState" class="state-pill">Starting</strong>
+    </section>
+
+    <section class="notice">
+      Discord desktop must be open before Rich Presence can connect.
+    </section>
+
+    <section class="panel master-panel">
+      <label class="control-row primary-control row">
+        <span>
+          <strong>ZeFoX Presence Bridge</strong>
+          <small>Turn the local Discord bridge off or on at once</small>
+        </span>
+
+        <span class="switch">
+          <input id="bridgeToggle" type="checkbox" checked>
+          <span></span>
+        </span>
+      </label>
+    </section>
+
+    <section class="panel">
+      <div class="status-row">
+        <span>Bridge</span>
+        <strong id="bridgeStatus">Starting...</strong>
+      </div>
+
+      <div class="status-row">
+        <span>Discord</span>
+        <strong id="discordStatus">Connecting...</strong>
+      </div>
+
+      <div class="status-row">
+        <span>Port</span>
+        <strong id="portStatus">127.0.0.1:3030</strong>
+      </div>
+    </section>
+
+    <section class="panel">
+      <label class="control-row row">
+        <span>
+          <strong>Discord Rich Presence</strong>
+          <small>Show ZeFoX activity on your Discord profile</small>
+        </span>
+
+        <span class="switch">
+          <input id="presenceToggle" type="checkbox">
+          <span></span>
+        </span>
+      </label>
+    </section>
+
+    <section class="panel">
+      <label class="control-row row">
+        <span>
+          <strong>Account on Rich Presence</strong>
+          <small>Show your Roblox headshot and profile link</small>
+        </span>
+
+        <span class="switch">
+          <input id="accountToggle" type="checkbox">
+          <span></span>
+        </span>
+      </label>
+    </section>
+
+    <section class="panel log-panel">
+      <strong class="log-title">Status</strong>
+      <p id="message" class="message">Starting bridge...</p>
+    </section>
+
+    <footer>Closing this window keeps the app in the tray.</footer>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
