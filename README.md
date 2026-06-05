@@ -1,35 +1,77 @@
+<p align="center">
+  <img src="assets/app-icon-256.png" alt="ZeFoX logo" width="160">
+</p>
+
 # ZeFoX Presence Bridge
 
-Electron desktop app for ZeFoX Discord Rich Presence.
+ZeFoX Presence Bridge is the optional Windows app that lets the ZeFoX browser extension show Discord Rich Presence while you use Roblox.
 
-## Setup
+## Download
+
+Download the latest setup file from the official ZeFoX RPC releases:
+
+```text
+https://github.com/VZefoq/ZeFoX-RPC/releases/latest/download/ZeFoX-Presence-Bridge-Setup.exe
+```
+
+Run the setup file and follow the installer.
+
+## What it does
+
+- Connects ZeFoX to Discord Rich Presence.
+- Runs locally on `127.0.0.1:3030`.
+- Starts automatically when the app opens.
+- Keeps running from the Windows tray when the window is closed.
+- Lets you enable or disable the bridge, Rich Presence, and account display.
+
+Discord desktop must be open for Rich Presence to appear.
+
+## Updates
+
+The app checks for updates automatically after it starts.
+
+If an update is available, ZeFoX Presence Bridge downloads it and asks you to restart the app when it is ready.
+
+If you run the setup file while the latest version is already installed, it will say that you already have the latest version instead of offering to uninstall.
+
+## Uninstalling
+
+To uninstall, use Windows Settings:
+
+```text
+Settings > Apps > Installed apps > ZeFoX Presence Bridge > Uninstall
+```
+
+## Troubleshooting
+
+- If Discord Rich Presence does not appear, make sure Discord desktop is open.
+- If the extension cannot connect, make sure ZeFoX Presence Bridge is running.
+- If Windows SmartScreen appears, choose `More info`, then `Run anyway`, but only if you downloaded the setup from the official ZeFoX site or GitHub release.
+
+## Developer Setup
 
 ```bash
 npm install
 npm start
 ```
 
-## Build Windows installer
+## Build Windows Installer
 
 ```bash
 npm run build:win
 ```
 
-## Next time you release an update
+## Maintainer Release Checklist
 
 Use this checklist every time you change the Presence Bridge and want users to receive the new version.
 
-Important: the GitHub repo that hosts the release assets must be public. Auto-update cannot read release metadata from a private repo, and public users cannot download private release assets.
+The GitHub repo that hosts the release assets must be public. Auto-update cannot read release metadata from a private repo, and public users cannot download private release assets.
 
 1. Bump the app version.
-
-   Example:
 
    ```bash
    npm version patch --no-git-tag-version
    ```
-
-   This updates both `package.json` and `package-lock.json`.
 
 2. Build the Windows installer and update metadata.
 
@@ -39,18 +81,16 @@ Important: the GitHub repo that hosts the release assets must be public. Auto-up
 
 3. Open GitHub releases for `VZefoq/ZeFoX-RPC`.
 
-   Before publishing, make sure `VZefoq/ZeFoX-RPC` is public.
-
    Create a new release with:
 
    ```text
-   Tag: bridge-v0.9.1
+   Tag: bridge-v0.9.2
    Target: main
-   Release title: ZeFoX Presence Bridge v0.9.1
+   Release title: ZeFoX Presence Bridge v0.9.2
    Release label: Latest
    ```
 
-   Replace `0.9.1` with the version you just created.
+   Replace `0.9.2` with the version you just created.
 
 4. Upload these three files from `dist` as release assets:
 
@@ -60,37 +100,16 @@ Important: the GitHub repo that hosts the release assets must be public. Auto-up
    latest.yml
    ```
 
-   Do not upload old installer files like `ZeFoX Presence Bridge Setup 0.8.9.exe`.
-
 5. Publish the release.
 
    Make sure it is marked as `Latest`, not `Pre-release`.
 
 6. Test the website download link.
 
-   The website download button uses:
-
    ```text
    https://github.com/VZefoq/ZeFoX-RPC/releases/latest/download/ZeFoX-Presence-Bridge-Setup.exe
    ```
 
-   It should download the newest `ZeFoX-Presence-Bridge-Setup.exe`.
-
 7. Test the auto-updater.
 
-   Install the previous version, then start the app after publishing the new release. It should check the latest GitHub release, download the update, and ask to restart when the update is ready.
-
-## Auto-update notes
-
-- Users on versions before `0.9.1` do not have working auto-update support. They must manually install `0.9.1` or newer once.
-- After users have `0.9.0` or newer, future updates can be downloaded by the app automatically.
-- Always increase the app version before building an update. If the version does not change, users will not receive the update.
-- Keep the release asset names exactly the same as listed above.
-- If the app says `releases.atom` returned `404`, the release repo is private or the updater points to the wrong repo.
-
-## Notes
-
-- Discord desktop must be open.
-- The app runs a local bridge on `127.0.0.1:3030`.
-- Use the app window or tray menu to enable or disable the bridge.
-- Closing the window hides it to the tray.
+   Install the previous version, start the app after publishing the new release, and confirm it downloads the update.
