@@ -259,6 +259,10 @@ footer {
   cursor: pointer;
 }
 
+#refreshClients.is-loading {
+  opacity: 0.6;
+}
+
 .discord-clients {
   display: grid;
   gap: 8px;
@@ -271,14 +275,31 @@ footer {
   grid-template-columns: 38px 1fr;
   align-items: center;
   gap: 10px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--accent-border);
   border-radius: 10px;
-  background: var(--panel-dark);
+  background:
+    radial-gradient(circle at top left, rgba(232, 25, 42, 0.12), transparent 45%),
+    var(--panel-dark);
   color: var(--text);
   padding: 9px;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.discord-client-card:disabled {
+  opacity: 0.72;
+  transform: none;
+}
+
+.discord-empty {
+  border: 1px dashed var(--panel-border);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .discord-client-card:hover {
@@ -286,16 +307,17 @@ footer {
   transform: translateY(-1px);
 }
 
-.discord-client-card.active {
-  border-color: var(--accent);
-  background:
-    radial-gradient(circle at top left, rgba(232, 25, 42, 0.16), transparent 45%),
-    var(--panel-dark);
-}
-
+.discord-client-card.active,
 .discord-client-card.connected {
   border-color: rgba(0, 166, 106, 0.8);
+  background:
+    radial-gradient(circle at top left, rgba(0, 166, 106, 0.13), transparent 45%),
+    var(--panel-dark);
   box-shadow: 0 0 0 1px rgba(0, 166, 106, 0.22);
+}
+
+.discord-client-card.connecting {
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .client-icon {
@@ -316,6 +338,10 @@ footer {
   background: rgba(0, 166, 106, 0.12);
 }
 
+.discord-client-card.connecting .client-icon {
+  animation: pulse 1s ease-in-out infinite;
+}
+
 .client-copy {
   display: grid;
   gap: 2px;
@@ -331,4 +357,88 @@ footer {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.client-loading-dots {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  height: 10px;
+  margin-top: 1px;
+}
+
+.client-loading-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--muted-strong);
+  opacity: 0.35;
+  animation: dotBounce 0.9s infinite ease-in-out;
+}
+
+.client-loading-dots i:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.client-loading-dots i:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.discord-client-card.connecting .client-loading-dots {
+  display: flex;
+}
+
+.update-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--text);
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+}
+
+.update-status[hidden] {
+  display: none;
+}
+
+.update-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: var(--text);
+  flex: 0 0 auto;
+}
+
+.update-status.busy .update-spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes dotBounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }

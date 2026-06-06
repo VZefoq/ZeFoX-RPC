@@ -45,6 +45,13 @@ function sendToMainWindow(channel, payload) {
   } catch {}
 }
 
+function sendUpdateStatus(text = "", busy = false) {
+  sendToMainWindow("update:status", {
+    text,
+    busy,
+  });
+}
+
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
@@ -175,6 +182,7 @@ function setupAutoUpdater() {
   autoUpdater.on("checking-for-update", () => {
     updateCheckInProgress = true;
     refreshTrayMenu();
+    sendUpdateStatus("Checking for updates...", true);
     bridgeEvents.emit("log", "Checking for updates...");
   });
 
@@ -182,6 +190,7 @@ function setupAutoUpdater() {
     updateCheckInProgress = false;
     manualUpdateCheckRequested = false;
     refreshTrayMenu();
+    sendUpdateStatus(`Update ${info.version || ""} is available.`.trim(), false);
     bridgeEvents.emit("log", `Update ${info.version || ""} is available.`.trim());
 
     await promptForAvailableUpdate(info);
@@ -193,6 +202,7 @@ function setupAutoUpdater() {
     manualUpdateCheckRequested = false;
     refreshTrayMenu();
     bridgeEvents.emit("log", "Presence Bridge is up to date.");
+    sendUpdateStatus(shouldShowDialog ? "Presence Bridge is up to date." : "", false);
 
     if (shouldShowDialog) {
       void showAppMessageBox({
@@ -208,19 +218,37 @@ function setupAutoUpdater() {
   autoUpdater.on("download-progress", (progress) => {
     updateDownloadInProgress = true;
     refreshTrayMenu();
-    bridgeEvents.emit("log", `Downloading update ${Math.round(progress.percent || 0)}%...`);
+    const percent = Math.round(progress.percent || 0);
+    sendUpdateStatus(`Downloading update ${percent}%...`, true);
+    bridgeEvents.emit("log", `Downloading update ${percent}%...`);
   });
 
-  autoUpdater.on("update-downloaded", (info) => {
+  autoUpdater.on("update-downloaded", async (info) => {
     updateReady = true;
     updateDownloadInProgress = false;
     bridgeEvents.emit("log", `Update ${info.version || ""} is ready to install.`.trim());
+    sendUpdateStatus("Update downloaded. Restart to install.", false);
     refreshTrayMenu();
 
     if (installAfterDownload) {
-      isQuitting = true;
-      stopBridge();
-      autoUpdater.quitAndInstall(false, true);
+      installAfterDownload = false;
+
+      const result = await showAppMessageBox({
+        type: "info",
+        buttons: ["Restart now", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Update Ready",
+        message: "The update is ready to install.",
+        detail: "Restart ZeFoX Presence Bridge now to finish the update.",
+      });
+
+      if (result.response === 0) {
+        sendUpdateStatus("Restarting to install update...", true);
+        isQuitting = true;
+        stopBridge();
+        autoUpdater.quitAndInstall(false, true);
+      }
     }
   });
 
@@ -234,6 +262,7 @@ function setupAutoUpdater() {
     manualUpdateCheckRequested = false;
     installAfterDownload = false;
     refreshTrayMenu();
+    sendUpdateStatus(message, false);
 
     bridgeEvents.emit("error", message);
 
@@ -301,6 +330,7 @@ async function checkForUpdates(manual = false) {
     manualUpdateCheckRequested = false;
     installAfterDownload = false;
     refreshTrayMenu();
+    sendUpdateStatus(message, false);
     bridgeEvents.emit("error", message);
 
     if (shouldShowDialog) {
@@ -337,6 +367,7 @@ async function promptForAvailableUpdate(info) {
   if (result.response !== 0) {
     installAfterDownload = false;
     bridgeEvents.emit("log", "Update postponed.");
+    sendUpdateStatus("Update postponed.", false);
     refreshTrayMenu();
     return;
   }
@@ -344,6 +375,7 @@ async function promptForAvailableUpdate(info) {
   installAfterDownload = true;
   updateDownloadInProgress = true;
   refreshTrayMenu();
+  sendUpdateStatus("Downloading update 0%...", true);
   bridgeEvents.emit("log", `Downloading update ${info?.version || ""}...`.trim());
 
   try {
@@ -354,6 +386,7 @@ async function promptForAvailableUpdate(info) {
     updateDownloadInProgress = false;
     installAfterDownload = false;
     refreshTrayMenu();
+    sendUpdateStatus(message, false);
     bridgeEvents.emit("error", message);
 
     await showAppMessageBox({
@@ -367,6 +400,8 @@ async function promptForAvailableUpdate(info) {
 }
 
 async function promptToInstallDownloadedUpdate() {
+  sendUpdateStatus("Update downloaded. Restart to install.", false);
+
   const result = await showAppMessageBox({
     type: "info",
     buttons: ["Update", "Later"],
@@ -378,6 +413,7 @@ async function promptToInstallDownloadedUpdate() {
   });
 
   if (result.response === 0) {
+    sendUpdateStatus("Restarting to install update...", true);
     isQuitting = true;
     stopBridge();
     autoUpdater.quitAndInstall(false, true);
@@ -459,8 +495,8 @@ ipcMain.handle("bridge:stop", () => {
   return sendStatus();
 });
 
-ipcMain.handle("bridge:selectDiscordClient", (_event, clientId) => {
-  selectDiscordClient(clientId);
+ipcMain.handle("bridge:selectDiscordClient", async (_event, clientId) => {
+  await selectDiscordClient(clientId);
   return sendStatus();
 });
 

@@ -18,4 +18,7 @@ contextBridge.exposeInMainWorld("zefoxBridge", {
   onLog: (callback) => {
     ipcRenderer.on("bridge:log", (_event, message) => callback(message));
   },
+  onUpdateStatus: (callback) => {
+    ipcRenderer.on("update:status", (_event, status) => callback(status));
+  },
 });
