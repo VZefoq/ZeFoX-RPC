@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("zefoxBridge", {
+  getVersion: () => ipcRenderer.invoke("app:getVersion"),
   getStatus: () => ipcRenderer.invoke("bridge:getStatus"),
   setPresenceEnabled: (enabled) => ipcRenderer.invoke("bridge:setPresenceEnabled", enabled),
   setAccountDisplayEnabled: (enabled) => ipcRenderer.invoke("bridge:setAccountDisplayEnabled", enabled),

@@ -433,6 +433,8 @@ app.on("window-all-closed", (event) => {
   event.preventDefault();
 });
 
+ipcMain.handle("app:getVersion", () => app.getVersion());
+
 ipcMain.handle("bridge:getStatus", () => getStatus());
 
 ipcMain.handle("bridge:setPresenceEnabled", (_event, enabled) => {

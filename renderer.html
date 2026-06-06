@@ -36,23 +36,6 @@
     </section>
 
     <section class="panel">
-      <div class="status-row">
-        <span>Bridge</span>
-        <strong id="bridgeStatus">Starting...</strong>
-      </div>
-
-      <div class="status-row">
-        <span>Discord</span>
-        <strong id="discordStatus">Connecting...</strong>
-      </div>
-
-      <div class="status-row">
-        <span>Port</span>
-        <strong id="portStatus">127.0.0.1:3030</strong>
-      </div>
-    </section>
-
-    <section class="panel">
       <label class="control-row row">
         <span>
           <strong>Discord Rich Presence</strong>
@@ -80,12 +63,10 @@
       </label>
     </section>
 
-    <section class="panel log-panel">
-      <strong class="log-title">Status</strong>
-      <p id="message" class="message">Starting bridge...</p>
-    </section>
-
-    <footer>Closing this window keeps the app in the tray.</footer>
+    <footer>
+      <span>Closing this window keeps the app in the tray.</span>
+      <span id="appVersion">Version ...</span>
+    </footer>
   </main>
 
   <script src="renderer.js"></script>
