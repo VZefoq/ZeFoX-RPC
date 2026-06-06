@@ -6,6 +6,8 @@ const {
   stopBridge,
   setPresenceEnabled,
   setAccountDisplayEnabled,
+  selectDiscordClient,
+  refreshDiscordClients,
   getStatus,
   bridgeEvents,
 } = require("./bridge");
@@ -454,6 +456,16 @@ ipcMain.handle("bridge:start", () => {
 
 ipcMain.handle("bridge:stop", () => {
   stopBridge();
+  return sendStatus();
+});
+
+ipcMain.handle("bridge:selectDiscordClient", (_event, clientId) => {
+  selectDiscordClient(clientId);
+  return sendStatus();
+});
+
+ipcMain.handle("bridge:refreshDiscordClients", async () => {
+  await refreshDiscordClients();
   return sendStatus();
 });
 

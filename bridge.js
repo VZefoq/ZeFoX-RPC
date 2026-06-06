@@ -2,11 +2,18 @@ const express = require("express");
 const cors = require("cors");
 const RPC = require("discord-rpc");
 const { EventEmitter } = require("events");
+const { execFile } = require("child_process");
 const packageInfo = require("./package.json");
 
 const CLIENT_ID = "1505230354779214086";
 const PORT = 3030;
 const APP_VERSION = sanitizeVersion(packageInfo.version);
+const DISCORD_CLIENTS = [
+  { id: "stable", name: "Discord", exe: "Discord.exe", shortName: "DC" },
+  { id: "ptb", name: "Discord PTB", exe: "DiscordPTB.exe", shortName: "PTB" },
+  { id: "canary", name: "Discord Canary", exe: "DiscordCanary.exe", shortName: "CAN" },
+  { id: "development", name: "Discord Dev", exe: "DiscordDevelopment.exe", shortName: "DEV" },
+];
 
 const bridgeEvents = new EventEmitter();
 
@@ -22,6 +29,14 @@ let lastStartedAt = Date.now();
 let lastActivity = {};
 let lastAccount = null;
 let lastExtensionVersion = APP_VERSION;
+let activeDiscordClientId = "stable";
+let discordClientStatuses = DISCORD_CLIENTS.map((client) => ({
+  ...client,
+  running: false,
+  connected: false,
+  presenceActive: false,
+}));
+let discordDetectTimer = null;
 
 function getStatus() {
   return {
@@ -31,6 +46,8 @@ function getStatus() {
     accountDisplayEnabled,
     account: lastAccount,
     port: PORT,
+    activeDiscordClientId,
+    discordClients: discordClientStatuses,
   };
 }
 
@@ -38,16 +55,105 @@ function emitStatus() {
   bridgeEvents.emit("status", getStatus());
 }
 
+function detectProcessRunning(exeName) {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve(false);
+      return;
+    }
+
+    execFile("tasklist", ["/FI", `IMAGENAME eq ${exeName}`, "/NH"], { windowsHide: true }, (error, stdout) => {
+      if (error) {
+        resolve(false);
+        return;
+      }
+
+      resolve(String(stdout || "").toLowerCase().includes(exeName.toLowerCase()));
+    });
+  });
+}
+
+async function refreshDiscordClients() {
+  const statuses = await Promise.all(
+    DISCORD_CLIENTS.map(async (client) => {
+      const running = await detectProcessRunning(client.exe);
+      const isActive = client.id === activeDiscordClientId;
+
+      return {
+        ...client,
+        running,
+        connected: Boolean(isActive && rpcReady),
+        presenceActive: Boolean(isActive && rpcReady && presenceEnabled),
+      };
+    })
+  );
+
+  discordClientStatuses = statuses;
+  emitStatus();
+  return getStatus();
+}
+
+function startDiscordDetectionLoop() {
+  if (discordDetectTimer) return;
+
+  refreshDiscordClients().catch(() => {});
+
+  discordDetectTimer = setInterval(() => {
+    refreshDiscordClients().catch(() => {});
+  }, 5000);
+}
+
+function stopDiscordDetectionLoop() {
+  if (!discordDetectTimer) return;
+
+  clearInterval(discordDetectTimer);
+  discordDetectTimer = null;
+}
+
+function getActiveDiscordClientName() {
+  return DISCORD_CLIENTS.find((client) => client.id === activeDiscordClientId)?.name || "Discord";
+}
+
+function selectDiscordClient(clientId) {
+  if (!DISCORD_CLIENTS.some((client) => client.id === clientId)) {
+    return getStatus();
+  }
+
+  activeDiscordClientId = clientId;
+  bridgeEvents.emit("log", `Selected ${getActiveDiscordClientName()} as the preferred Discord client.`);
+
+  if (rpc) {
+    const currentRpc = rpc;
+    rpc = null;
+    rpcReady = false;
+
+    try {
+      currentRpc.destroy().catch(() => {});
+    } catch {}
+  }
+
+  if (bridgeRunning) {
+    createRpcClient();
+  }
+
+  refreshDiscordClients().catch(() => emitStatus());
+  return getStatus();
+}
+
 function createRpcClient() {
   if (rpc) return;
 
   rpc = new RPC.Client({ transport: "ipc" });
+  const currentRpc = rpc;
   RPC.register(CLIENT_ID);
 
   rpc.on("ready", () => {
+    if (rpc !== currentRpc) return;
+
     rpcReady = true;
-    bridgeEvents.emit("log", "Connected to Discord.");
+    bridgeEvents.emit("log", `Connected to ${getActiveDiscordClientName()}.`);
     emitStatus();
+    refreshDiscordClients().catch(() => {});
 
     if (presenceEnabled) {
       setZeFoXPresence(lastActivity);
@@ -55,19 +161,27 @@ function createRpcClient() {
   });
 
   rpc.on("disconnected", () => {
+    if (rpc !== currentRpc) return;
+
     rpcReady = false;
-    bridgeEvents.emit("log", "Disconnected from Discord.");
+    bridgeEvents.emit("log", `Disconnected from ${getActiveDiscordClientName()}.`);
     emitStatus();
+    refreshDiscordClients().catch(() => {});
   });
 
   rpc.on("error", (error) => {
+    if (rpc !== currentRpc) return;
+
     bridgeEvents.emit("error", `Discord RPC error. ${error.message || error}`);
   });
 
   rpc.login({ clientId: CLIENT_ID }).catch((error) => {
+    if (rpc !== currentRpc) return;
+
     rpcReady = false;
-    bridgeEvents.emit("error", `Could not connect to Discord. Make sure Discord desktop is open. ${error.message || error}`);
+    bridgeEvents.emit("error", `Could not connect to ${getActiveDiscordClientName()}. Make sure that Discord client is open. ${error.message || error}`);
     emitStatus();
+    refreshDiscordClients().catch(() => {});
   });
 }
 
@@ -224,11 +338,13 @@ function startBridge() {
   });
 
   createRpcClient();
+  startDiscordDetectionLoop();
 }
 
 function stopBridge() {
   presenceEnabled = false;
   clearPresence();
+  stopDiscordDetectionLoop();
 
   if (rpc) {
     const currentRpc = rpc;
@@ -251,6 +367,12 @@ function stopBridge() {
   server = null;
   httpApp = null;
   bridgeRunning = false;
+
+  discordClientStatuses = discordClientStatuses.map((client) => ({
+    ...client,
+    connected: false,
+    presenceActive: false,
+  }));
 
   bridgeEvents.emit("log", "Bridge disabled.");
   emitStatus();
@@ -288,6 +410,8 @@ module.exports = {
   stopBridge,
   setPresenceEnabled,
   setAccountDisplayEnabled,
+  selectDiscordClient,
+  refreshDiscordClients,
   getStatus,
   bridgeEvents,
 };
