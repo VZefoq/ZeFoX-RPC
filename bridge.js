@@ -2,9 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const RPC = require("discord-rpc");
 const { EventEmitter } = require("events");
+const packageInfo = require("./package.json");
 
 const CLIENT_ID = "1505230354779214086";
 const PORT = 3030;
+const APP_VERSION = sanitizeVersion(packageInfo.version);
 
 const bridgeEvents = new EventEmitter();
 
@@ -19,7 +21,7 @@ let accountDisplayEnabled = false;
 let lastStartedAt = Date.now();
 let lastActivity = {};
 let lastAccount = null;
-let lastExtensionVersion = "";
+let lastExtensionVersion = APP_VERSION;
 
 function getStatus() {
   return {
@@ -56,6 +58,10 @@ function createRpcClient() {
     rpcReady = false;
     bridgeEvents.emit("log", "Disconnected from Discord.");
     emitStatus();
+  });
+
+  rpc.on("error", (error) => {
+    bridgeEvents.emit("error", `Discord RPC error. ${error.message || error}`);
   });
 
   rpc.login({ clientId: CLIENT_ID }).catch((error) => {
@@ -142,17 +148,19 @@ function setZeFoXPresence(activity = {}) {
   };
 
   if (lastExtensionVersion) {
-    presence.state = `v${lastExtensionVersion}`;
+    presence.state = `Version ${lastExtensionVersion}`;
   }
 
-  rpc.setActivity(presence);
+  rpc.setActivity(presence).catch((error) => {
+    bridgeEvents.emit("error", `Could not update Discord presence. ${error.message || error}`);
+  });
   bridgeEvents.emit("log", "Presence updated.");
 }
 
 function clearPresence() {
   if (!rpcReady || !rpc) return;
 
-  rpc.clearActivity();
+  rpc.clearActivity().catch(() => {});
   bridgeEvents.emit("log", "Presence cleared.");
 }
 
@@ -223,13 +231,16 @@ function stopBridge() {
   clearPresence();
 
   if (rpc) {
-    try {
-      rpc.destroy();
-    } catch {}
-  }
+    const currentRpc = rpc;
+    rpc = null;
+    rpcReady = false;
 
-  rpc = null;
-  rpcReady = false;
+    try {
+      currentRpc.destroy().catch(() => {});
+    } catch {}
+  } else {
+    rpcReady = false;
+  }
 
   if (server) {
     try {
