@@ -14,8 +14,8 @@ const PORT = 3030;
 const APP_VERSION = sanitizeVersion(packageInfo.version);
 const DISCORD_CLIENTS = [
   { id: "stable", name: "Discord", exe: "Discord.exe", installDir: "Discord", shortName: "DC" },
-  { id: "ptb", name: "Discord PTB", exe: "DiscordPTB.exe", installDir: "DiscordPTB", shortName: "PTB" },
   { id: "canary", name: "Discord Canary", exe: "DiscordCanary.exe", installDir: "DiscordCanary", shortName: "CAN" },
+  { id: "ptb", name: "Discord PTB", exe: "DiscordPTB.exe", installDir: "DiscordPTB", shortName: "PTB" },
   { id: "development", name: "Discord Dev", exe: "DiscordDevelopment.exe", installDir: "DiscordDevelopment", shortName: "DEV" },
 ];
 const OPCodes = {
@@ -158,6 +158,7 @@ let bridgeRunning = false;
 let rpcReady = false;
 let presenceEnabled = false;
 let accountDisplayEnabled = false;
+let gameDisplayEnabled = false;
 let lastStartedAt = Date.now();
 let lastActivity = {};
 let lastAccount = null;
@@ -173,6 +174,7 @@ function getStatus() {
     rpcReady,
     presenceEnabled,
     accountDisplayEnabled,
+    gameDisplayEnabled,
     account: lastAccount,
     port: PORT,
     activeDiscordClientId: Array.from(selectedDiscordClientIds)[0] || "",
@@ -207,6 +209,138 @@ function detectProcessRunning(exeName) {
   });
 }
 
+function detectDiscordIpcState() {
+  return new Promise((resolve) => {
+    if (process.platform !== "win32") {
+      resolve(null);
+      return;
+    }
+
+    const quotedExeNames = DISCORD_CLIENTS
+      .map((client) => `'${client.exe.replace(/'/g, "''")}'`)
+      .join(",");
+    const quotedInstallDirs = DISCORD_CLIENTS
+      .map((client) => `'${client.installDir.replace(/'/g, "''")}'`)
+      .join(",");
+    const command = [
+      `$names = @(${quotedExeNames})`,
+      `$installDirs = @(${quotedInstallDirs})`,
+      "$processes = Get-CimInstance Win32_Process |",
+      "Where-Object {",
+      "$process = $_",
+      "$names -contains $process.Name -or",
+      "($process.ExecutablePath -and ($installDirs | Where-Object { $process.ExecutablePath -like ('*\\' + $_ + '\\*') }))",
+      "} |",
+      "ForEach-Object {",
+      "[PSCustomObject]@{",
+      "Name = $_.Name;",
+      "ProcessId = [int]$_.ProcessId;",
+      "ExecutablePath = [string]$_.ExecutablePath;",
+      "CreationDate = $_.CreationDate.ToUniversalTime().ToString('o')",
+      "}",
+      "}",
+      "$typeDefinition = 'using System; using System.Runtime.InteropServices; public static class ZeFoXPipeNative { [DllImport(\"kernel32.dll\", SetLastError = true)] public static extern bool GetNamedPipeServerProcessId(IntPtr pipe, out uint serverProcessId); }'",
+      "Add-Type -TypeDefinition $typeDefinition",
+      "$pipes = @()",
+      "for ($i = 0; $i -lt 10; $i++) {",
+      "try {",
+      "$pipe = [System.IO.Pipes.NamedPipeClientStream]::new('.', \"discord-ipc-$i\", [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::None)",
+      "try {",
+      "$pipe.Connect(75)",
+      "[uint32]$serverProcessId = 0",
+      "if ([ZeFoXPipeNative]::GetNamedPipeServerProcessId($pipe.SafePipeHandle.DangerousGetHandle(), [ref]$serverProcessId)) {",
+      "$pipes += [PSCustomObject]@{ PipeId = [int]$i; ProcessId = [int]$serverProcessId }",
+      "}",
+      "} finally { $pipe.Dispose() }",
+      "} catch {}",
+      "}",
+      "[PSCustomObject]@{ Processes = @($processes); Pipes = @($pipes) } | ConvertTo-Json -Compress -Depth 4",
+    ].join("\n");
+
+    execFile(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+      { windowsHide: true, timeout: 4000 },
+      (error, stdout) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+
+        const raw = String(stdout || "").trim();
+        if (!raw) {
+          resolve({
+            processesByClientId: new Map(),
+            pipeIdsByClientId: new Map(),
+          });
+          return;
+        }
+
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          resolve(null);
+          return;
+        }
+
+        const processRows = Array.isArray(parsed?.Processes)
+          ? parsed.Processes
+          : (parsed?.Processes ? [parsed.Processes] : []);
+        const pipeRows = Array.isArray(parsed?.Pipes)
+          ? parsed.Pipes
+          : (parsed?.Pipes ? [parsed.Pipes] : []);
+        const processesByClientId = new Map();
+        const processesById = new Map();
+
+        processRows.forEach((row) => {
+          const exeName = String(row?.Name || "").toLowerCase();
+          const executablePath = String(row?.ExecutablePath || "").toLowerCase();
+          const processId = Number(row?.ProcessId) || 0;
+          const startedAtMs = Date.parse(row?.CreationDate);
+          if (!exeName || !processId) return;
+          const client = getClientForProcess(exeName, executablePath);
+          if (!client) return;
+
+          const processInfo = {
+            clientId: client.id,
+            exeName,
+            executablePath,
+            processId,
+            startedAtMs: Number.isNaN(startedAtMs) ? 0 : startedAtMs,
+          };
+          const existing = processesByClientId.get(client.id);
+
+          if (!existing || processInfo.startedAtMs < existing.startedAtMs) {
+            processesByClientId.set(client.id, processInfo);
+          }
+
+          processesById.set(processId, processInfo);
+        });
+
+        const pipeIdsByClientId = new Map();
+
+        pipeRows.forEach((row) => {
+          const pipeId = Number(row?.PipeId);
+          const processId = Number(row?.ProcessId) || 0;
+          const processInfo = processesById.get(processId);
+          if (!Number.isInteger(pipeId) || !processInfo) return;
+
+          const existingPipeId = pipeIdsByClientId.get(processInfo.clientId);
+          if (existingPipeId === undefined || pipeId < existingPipeId) {
+            pipeIdsByClientId.set(processInfo.clientId, pipeId);
+          }
+        });
+
+        resolve({
+          processesByClientId,
+          pipeIdsByClientId,
+        });
+      }
+    );
+  });
+}
+
 function detectDiscordInstalled(client, running = false) {
   if (running) return true;
 
@@ -235,6 +369,17 @@ function getClientName(clientId) {
   return DISCORD_CLIENTS.find((client) => client.id === clientId)?.name || "Discord";
 }
 
+function getClientForProcess(exeName, executablePath = "") {
+  const normalizedPath = String(executablePath || "").replace(/\//g, "\\").toLowerCase();
+  const pathClient = DISCORD_CLIENTS.find((client) => normalizedPath.includes(`\\${client.installDir.toLowerCase()}\\`));
+
+  if (pathClient) {
+    return pathClient;
+  }
+
+  return DISCORD_CLIENTS.find((client) => client.exe.toLowerCase() === exeName);
+}
+
 function getRunningClients(statuses = discordClientStatuses) {
   return DISCORD_CLIENTS.filter((client) => {
     const status = statuses.find((item) => item.id === client.id);
@@ -243,6 +388,11 @@ function getRunningClients(statuses = discordClientStatuses) {
 }
 
 function getClientPipeId(clientId, statuses = discordClientStatuses) {
+  const status = statuses.find((item) => item.id === clientId);
+  if (Number.isInteger(status?.pipeId)) {
+    return status.pipeId;
+  }
+
   const runningClients = getRunningClients(statuses);
   const index = runningClients.findIndex((client) => client.id === clientId);
   return index >= 0 ? index : null;
@@ -269,9 +419,11 @@ async function refreshDiscordClientsAfterSelection() {
 }
 
 async function refreshDiscordClientsNow() {
+  const detectedIpcState = await detectDiscordIpcState();
   const processStatuses = await Promise.all(
     DISCORD_CLIENTS.map(async (client) => {
-      const running = await detectProcessRunning(client.exe);
+      const processInfo = detectedIpcState?.processesByClientId.get(client.id);
+      const running = detectedIpcState ? Boolean(processInfo) : await detectProcessRunning(client.exe);
       const installed = detectDiscordInstalled(client, running);
       const session = rpcClients.get(client.id);
       const selected = selectedDiscordClientIds.has(client.id);
@@ -281,6 +433,9 @@ async function refreshDiscordClientsNow() {
         installed,
         selected,
         running,
+        pipeId: detectedIpcState?.pipeIdsByClientId.get(client.id) ?? null,
+        processId: processInfo?.processId || null,
+        processStartedAtMs: processInfo?.startedAtMs || null,
         connecting: Boolean(session?.connecting),
         connected: Boolean(session?.ready),
         presenceActive: Boolean(session?.ready && presenceEnabled),
@@ -319,14 +474,21 @@ function stopDiscordDetectionLoop() {
 function syncDiscordRpcClients(statuses = discordClientStatuses) {
   if (!bridgeRunning) return;
 
-  const desiredClientIds = new Set(
-    statuses
-      .filter((client) => client.running && selectedDiscordClientIds.has(client.id))
-      .map((client) => client.id)
-  );
+  const desiredClientPipeIds = new Map();
+
+  statuses
+    .filter((client) => client.running && selectedDiscordClientIds.has(client.id))
+    .forEach((client) => {
+      const pipeId = getClientPipeId(client.id, statuses);
+      if (pipeId !== null) {
+        desiredClientPipeIds.set(client.id, pipeId);
+      }
+    });
 
   for (const [clientId, session] of rpcClients) {
-    if (!desiredClientIds.has(clientId)) {
+    const desiredPipeId = desiredClientPipeIds.get(clientId);
+
+    if (desiredPipeId === undefined || desiredPipeId !== session.pipeId) {
       rpcClients.delete(clientId);
       session.ready = false;
       session.connecting = false;
@@ -341,12 +503,9 @@ function syncDiscordRpcClients(statuses = discordClientStatuses) {
     }
   }
 
-  for (const clientId of desiredClientIds) {
+  for (const [clientId, pipeId] of desiredClientPipeIds) {
     const existingSession = rpcClients.get(clientId);
     if (existingSession?.ready || existingSession?.connecting) continue;
-
-    const pipeId = getClientPipeId(clientId, statuses);
-    if (pipeId === null) continue;
 
     createRpcClient(clientId, pipeId);
   }
@@ -465,6 +624,81 @@ function getAccountLabel(account) {
   return account.displayName || "Roblox account";
 }
 
+function sanitizeText(value, maxLength = 128) {
+  return String(value || "").trim().slice(0, maxLength);
+}
+
+function sanitizeUrl(value) {
+  const url = String(value || "").trim();
+
+  if (!url) return "";
+
+  try {
+    const parsed = new URL(url);
+
+    if (!["https:", "http:"].includes(parsed.protocol)) {
+      return "";
+    }
+
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function getGameName(activity = {}) {
+  const presence =
+    activity.userPresence ||
+    activity.robloxPresence ||
+    activity.userPresences?.[0] ||
+    activity.robloxPresence?.userPresences?.[0];
+
+  return sanitizeText(
+    activity.gameName ||
+      activity.placeName ||
+      activity.experienceName ||
+      activity.game?.name ||
+      activity.place?.name ||
+      presence?.lastLocation,
+    96,
+  );
+}
+
+function getJoinGameUrl(activity = {}) {
+  const presence =
+    activity.userPresence ||
+    activity.robloxPresence ||
+    activity.userPresences?.[0] ||
+    activity.robloxPresence?.userPresences?.[0];
+
+  const placeId =
+    activity.placeId ||
+    activity.rootPlaceId ||
+    presence?.placeId ||
+    presence?.rootPlaceId;
+
+  const gameInstanceId =
+    activity.gameInstanceId ||
+    activity.jobId ||
+    activity.gameId ||
+    presence?.gameId;
+
+  const directJoinUrl = placeId && gameInstanceId
+    ? `https://www.roblox.com/games/start?placeId=${encodeURIComponent(placeId)}&gameInstanceId=${encodeURIComponent(gameInstanceId)}`
+    : "";
+
+  return sanitizeUrl(
+    activity.joinUrl ||
+      activity.joinGameUrl ||
+      activity.gameUrl ||
+      activity.placeUrl ||
+      activity.game?.joinUrl ||
+      activity.game?.url ||
+      directJoinUrl ||
+      (placeId ? `https://www.roblox.com/games/${encodeURIComponent(placeId)}` : ""),
+  );
+}
+
 function sanitizeVersion(version) {
   const value = String(version || "").trim();
   return /^\d+(?:\.\d+){0,3}(?:[-+][a-z0-9.-]+)?$/i.test(value) ? value : "";
@@ -504,25 +738,28 @@ function setZeFoXPresence(activity = {}) {
   const readySessions = getReadyRpcSessions();
   if (!readySessions.length) return;
 
-  const buttons = [
-    {
-      label: "Download now",
-      url: "https://zefoxx.netlify.app",
-    },
-  ];
+  const gameName = gameDisplayEnabled ? getGameName(lastActivity) : "";
+  const joinGameUrl = gameDisplayEnabled ? getJoinGameUrl(lastActivity) : "";
 
-  if (accountDisplayEnabled && lastAccount?.profileUrl) {
+  const buttons = [];
+
+  if (joinGameUrl) {
     buttons.push({
-      label: "View account",
-      url: lastAccount.profileUrl,
+      label: "Join game",
+      url: joinGameUrl,
     });
   }
 
+  buttons.push({
+    label: "Download now",
+    url: "https://zefox.zefoq.dev",
+  });
+
   const presence = {
-    details: "Enhance ur roblox experience",
+    details: gameName ? `${gameName} - ZeFoX` : "ZeFoX - Roblox Browser Extension",
     startTimestamp: lastStartedAt,
     largeImageKey: "zefox_logo",
-    largeImageText: "ZeFoX",
+    largeImageText: gameName || "ZeFoX",
     smallImageKey: accountDisplayEnabled && lastAccount?.thumbnailUrl ? lastAccount.thumbnailUrl : "roblox_logo",
     smallImageText: accountDisplayEnabled ? getAccountLabel(lastAccount) : "Roblox",
     buttons,
@@ -682,11 +919,22 @@ function setAccountDisplayEnabled(enabled) {
   emitStatus();
 }
 
+function setGameDisplayEnabled(enabled) {
+  gameDisplayEnabled = Boolean(enabled);
+
+  if (presenceEnabled) {
+    setZeFoXPresence(lastActivity);
+  }
+
+  emitStatus();
+}
+
 module.exports = {
   startBridge,
   stopBridge,
   setPresenceEnabled,
   setAccountDisplayEnabled,
+  setGameDisplayEnabled,
   selectDiscordClient,
   refreshDiscordClients,
   getStatus,

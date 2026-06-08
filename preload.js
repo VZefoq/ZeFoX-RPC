@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("zefoxBridge", {
   getStatus: () => ipcRenderer.invoke("bridge:getStatus"),
   setPresenceEnabled: (enabled) => ipcRenderer.invoke("bridge:setPresenceEnabled", enabled),
   setAccountDisplayEnabled: (enabled) => ipcRenderer.invoke("bridge:setAccountDisplayEnabled", enabled),
+  setGameDisplayEnabled: (enabled) => ipcRenderer.invoke("bridge:setGameDisplayEnabled", enabled),
   start: () => ipcRenderer.invoke("bridge:start"),
   stop: () => ipcRenderer.invoke("bridge:stop"),
   selectDiscordClient: (clientId) => ipcRenderer.invoke("bridge:selectDiscordClient", clientId),

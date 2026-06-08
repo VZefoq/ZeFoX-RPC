@@ -6,6 +6,7 @@ const {
   stopBridge,
   setPresenceEnabled,
   setAccountDisplayEnabled,
+  setGameDisplayEnabled,
   selectDiscordClient,
   refreshDiscordClients,
   getStatus,
@@ -21,6 +22,18 @@ let updateDownloadInProgress = false;
 let updatePromptOpen = false;
 let manualUpdateCheckRequested = false;
 let installAfterDownload = false;
+let clearUpdateStatusTimer = null;
+
+function clearUpdateStatusSoon(delayMs = 5000) {
+  if (clearUpdateStatusTimer) {
+    clearTimeout(clearUpdateStatusTimer);
+  }
+
+  clearUpdateStatusTimer = setTimeout(() => {
+    clearUpdateStatusTimer = null;
+    sendUpdateStatus("", false);
+  }, delayMs);
+}
 
 function getIconPath() {
   const iconFile = process.platform === "win32" ? "app.ico" : "app-icon-256.png";
@@ -205,6 +218,10 @@ function setupAutoUpdater() {
     sendUpdateStatus(shouldShowDialog ? "Presence Bridge is up to date." : "", false);
 
     if (shouldShowDialog) {
+      clearUpdateStatusSoon();
+    }
+
+    if (shouldShowDialog) {
       void showAppMessageBox({
         type: "info",
         buttons: ["OK"],
@@ -263,6 +280,7 @@ function setupAutoUpdater() {
     installAfterDownload = false;
     refreshTrayMenu();
     sendUpdateStatus(message, false);
+    clearUpdateStatusSoon(8000);
 
     bridgeEvents.emit("error", message);
 
@@ -331,6 +349,7 @@ async function checkForUpdates(manual = false) {
     installAfterDownload = false;
     refreshTrayMenu();
     sendUpdateStatus(message, false);
+    clearUpdateStatusSoon(8000);
     bridgeEvents.emit("error", message);
 
     if (shouldShowDialog) {
@@ -430,12 +449,33 @@ function showAppMessageBox(options) {
 
 function formatUpdateError(error) {
   const message = String(error?.message || error || "");
+  const code = String(error?.code || "");
+  const statusCode = String(error?.statusCode || "");
 
-  if (/releases\.atom/i.test(message) && /\b404\b/.test(message)) {
-    return "Update check failed because the GitHub release feed is not public. Use a public release repo or make the release repo public.";
+  if (
+    /\b504\b/i.test(message) ||
+    statusCode === "504" ||
+    /gateway\s*time-?out/i.test(message) ||
+    /ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i.test(`${message} ${code}`)
+  ) {
+    return "Update check failed because GitHub did not respond in time. Try again in a minute.";
   }
 
-  return `Update check failed. ${message}`;
+  if (/releases\.atom/i.test(message) && /\b404\b/.test(message)) {
+    return "Update check failed because the GitHub release feed is not public. Make the release repo public.";
+  }
+
+  if (/unable to find latest version|cannot parse releases feed|no published versions/i.test(message)) {
+    return "Update check failed because GitHub release metadata could not be read. Make sure the latest release is public, not pre-release, and has latest.yml, the setup exe, and the blockmap uploaded.";
+  }
+
+  const cleanMessage = message
+    .replace(/Data:\s*<html>[\s\S]*?<\/html>/i, "GitHub returned an HTML error page.")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 260);
+
+  return `Update check failed. ${cleanMessage || "Unknown updater error."}`;
 }
 
 app.whenReady().then(() => {
@@ -482,6 +522,11 @@ ipcMain.handle("bridge:setPresenceEnabled", (_event, enabled) => {
 
 ipcMain.handle("bridge:setAccountDisplayEnabled", (_event, enabled) => {
   setAccountDisplayEnabled(Boolean(enabled));
+  return sendStatus();
+});
+
+ipcMain.handle("bridge:setGameDisplayEnabled", (_event, enabled) => {
+  setGameDisplayEnabled(Boolean(enabled));
   return sendStatus();
 });
 
