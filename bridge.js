@@ -664,6 +664,21 @@ function getGameName(activity = {}) {
   );
 }
 
+function getGameImageUrl(activity = {}) {
+  return sanitizeUrl(
+    activity.gameIconUrl ||
+      activity.gameThumbnailUrl ||
+      activity.thumbnailUrl ||
+      activity.imageUrl ||
+      activity.game?.iconUrl ||
+      activity.game?.thumbnailUrl ||
+      activity.game?.imageUrl ||
+      activity.place?.iconUrl ||
+      activity.place?.thumbnailUrl ||
+      activity.place?.imageUrl,
+  );
+}
+
 function getJoinGameUrl(activity = {}) {
   const presence =
     activity.userPresence ||
@@ -740,6 +755,7 @@ function setZeFoXPresence(activity = {}) {
 
   const gameName = gameDisplayEnabled ? getGameName(lastActivity) : "";
   const joinGameUrl = gameDisplayEnabled ? getJoinGameUrl(lastActivity) : "";
+  const gameImageUrl = gameDisplayEnabled ? getGameImageUrl(lastActivity) : "";
 
   const buttons = [];
 
@@ -758,7 +774,7 @@ function setZeFoXPresence(activity = {}) {
   const presence = {
     details: gameName ? `${gameName} - ZeFoX` : "ZeFoX - Roblox Browser Extension",
     startTimestamp: lastStartedAt,
-    largeImageKey: "zefox_logo",
+    largeImageKey: gameImageUrl || "zefox_logo",
     largeImageText: gameName || "ZeFoX",
     smallImageKey: accountDisplayEnabled && lastAccount?.thumbnailUrl ? lastAccount.thumbnailUrl : "roblox_logo",
     smallImageText: accountDisplayEnabled ? getAccountLabel(lastAccount) : "Roblox",
